@@ -127,7 +127,7 @@ fn build_ui(app: &gtk4::Application) {
     grid.set_column_spacing(2);
     grid.set_halign(gtk4::Align::Center);
 
-    let footer = gtk4::Label::new(Some("\u{2190}\u{2192} mo   \u{2191}\u{2193} yr   \u{23CE} today   s style"));
+    let footer = gtk4::Label::new(Some("h/l mo   j/k yr   \u{23CE} today   s style"));
     footer.add_css_class("waycal-footer");
     footer.set_halign(gtk4::Align::Center);
 
@@ -154,10 +154,10 @@ fn build_ui(app: &gtk4::Application) {
         key.connect_key_pressed(move |_, keyval, _, _| {
             let current = *state.borrow();
             let next = match keyval {
-                gdk::Key::Left => current.shift_month(-1),
-                gdk::Key::Right => current.shift_month(1),
-                gdk::Key::Up => current.shift_year(-1),
-                gdk::Key::Down => current.shift_year(1),
+                gdk::Key::h | gdk::Key::H => current.shift_month(-1),
+                gdk::Key::l | gdk::Key::L => current.shift_month(1),
+                gdk::Key::k | gdk::Key::K => current.shift_year(-1),
+                gdk::Key::j | gdk::Key::J => current.shift_year(1),
                 gdk::Key::Return | gdk::Key::KP_Enter => ViewDate::today(),
                 gdk::Key::Escape => {
                     window.close();
