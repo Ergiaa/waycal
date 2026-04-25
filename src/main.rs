@@ -11,6 +11,7 @@ use gtk4::prelude::*;
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 
 const APP_ID: &str = "com.forrestknight.waycal";
+const AUTO_CLOSE_DELAY: std::time::Duration = std::time::Duration::from_secs(2);
 
 #[derive(Clone, Copy)]
 struct ViewDate {
@@ -111,6 +112,7 @@ fn build_ui(app: &gtk4::Application) {
     window.add_css_class("waycal");
 
     window.init_layer_shell();
+    window.set_namespace(Some("waycal"));
     window.set_layer(Layer::Top);
     window.set_keyboard_mode(KeyboardMode::OnDemand);
     window.set_anchor(Edge::Top, true);
@@ -179,6 +181,72 @@ fn build_ui(app: &gtk4::Application) {
         });
     }
     window.add_controller(key);
+
+    // Auto-close: 2s timer starts when cursor leaves, cancelled on re-entry.
+    let auto_close: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
+
+    let motion = gtk4::EventControllerMotion::new();
+    {
+        let auto_close = auto_close.clone();
+        motion.connect_enter(move |_, _, _| {
+            if let Some(id) = auto_close.borrow_mut().take() {
+                id.remove();
+            }
+        });
+    }
+    {
+        let window = window.clone();
+        let auto_close = auto_close.clone();
+        motion.connect_leave(move |_| {
+            if let Some(id) = auto_close.borrow_mut().take() {
+                id.remove();
+            }
+            if !window.is_visible() {
+                return;
+            }
+            let window_inner = window.clone();
+            let auto_close_inner = auto_close.clone();
+            let id = glib::timeout_add_local(AUTO_CLOSE_DELAY, move || {
+                *auto_close_inner.borrow_mut() = None;
+                window_inner.close();
+                glib::ControlFlow::Break
+            });
+            *auto_close.borrow_mut() = Some(id);
+        });
+    }
+    window.add_controller(motion);
+
+    // Cancel any pending timer when the window closes so a dangling timeout
+    // never calls close() on a destroyed window.
+    {
+        let auto_close = auto_close.clone();
+        window.connect_close_request(move |_| {
+            if let Some(id) = auto_close.borrow_mut().take() {
+                id.remove();
+            }
+            glib::Propagation::Proceed
+        });
+    }
+
+    // Arm an initial timer for when the window opens with the pointer already
+    // outside it — motion.connect_leave won't fire in that case.
+    {
+        let window_inner = window.clone();
+        let auto_close_inner = auto_close.clone();
+        let id = glib::timeout_add_local(AUTO_CLOSE_DELAY, move || {
+            *auto_close_inner.borrow_mut() = None;
+            window_inner.close();
+            glib::ControlFlow::Break
+        });
+        *auto_close.borrow_mut() = Some(id);
+    }
+
+    // Immediate close when the window loses focus — covers clicking outside.
+    window.connect_is_active_notify(|w| {
+        if !w.is_active() {
+            w.close();
+        }
+    });
 
     window.present();
 }
